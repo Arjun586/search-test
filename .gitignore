@@ -1,0 +1,5 @@
+node_modules/
+dist/
+.env
+data/*.csv
+npm-debug.log*
