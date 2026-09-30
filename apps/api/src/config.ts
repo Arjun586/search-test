@@ -1,7 +1,7 @@
 export const config = {
   port: 4000,
   corsOrigin: 'http://localhost:5173',
-  databaseUrl: 'postgresql://search:search@localhost:5432/search_benchmark',
+  databaseUrl: 'postgresql://search:search@localhost:5432/search-benchmark',
   elasticsearchUrl: 'http://localhost:9200',
   elasticsearchIndex: 'search_documents',
 };
