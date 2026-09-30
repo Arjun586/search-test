@@ -6,11 +6,10 @@ import type { SearchResponse } from '../types.js';
 export async function searchWithIlike(query: string, limit: number): Promise<SearchResponse> {
   const started = now();
   const response = await pool.query<{ id: string; document: Record<string, unknown> }>(
-    `SELECT id, document
+    `SELECT id
      FROM documents
-     WHERE searchable_text ILIKE '%' || $1 || '%'
-     LIMIT $2`,
-    [query, limit],
+     WHERE searchable_text ILIKE '%' || $1 || '%'`,
+    [query],
   );
 
   return {

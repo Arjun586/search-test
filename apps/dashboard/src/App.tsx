@@ -128,24 +128,97 @@ export function App() {
       </section>
 
       <section className="grid gap-4 lg:grid-cols-3">
-        {engines.map((engine) => {
-          const result = searchResults[engine];
-          return <article className="panel min-w-0" key={engine}>
-            <h3 className="font-semibold">{label[engine]}</h3>
-            {!result && <p className="mt-3 text-sm text-slate-500">No search yet.</p>}
-            {result && <><p className="mt-2 text-sm text-cyan-300">{asMs(result.searchLatencyMs)} · {result.resultCount} results</p><div className="mt-3 space-y-2">{result.results.map((item) => <div className="rounded-lg border border-slate-800 bg-slate-950/60 p-3 text-xs" key={item.id}><div className="flex justify-between gap-2"><span className="font-mono text-cyan-300">{item.id}</span><span className="text-slate-400">{item.score === null ? '' : `score ${item.score.toFixed(3)}`}</span></div><pre className="mt-2 whitespace-pre-wrap break-words text-slate-300">{JSON.stringify(item.document)}</pre></div>)}</div></>}
-          </article>;
-        })}
-      </section>
+  {engines.map((engine) => {
+    const result = searchResults[engine];
+
+    return (
+      <article className="panel min-w-0" key={engine}>
+        <h3 className="font-semibold">{label[engine]}</h3>
+
+        {!result && (
+          <p className="mt-3 text-sm text-slate-500">
+            No search yet.
+          </p>
+        )}
+
+        {result && (
+          <p className="mt-2 text-sm text-cyan-300">
+            {asMs(result.searchLatencyMs)} 
+          </p>
+        )}
+      </article>
+    );
+  })}
+</section>
 
       <section className="panel">
-        <h2 className="font-semibold">3. Benchmark</h2>
-        <form className="mt-4 flex flex-wrap items-end gap-3" onSubmit={runBenchmark}>
-          <label><span className="label">Iterations</span><input className="field w-28" type="number" min="1" max="10000" value={iterations} onChange={(event) => setIterations(Number(event.target.value))} /></label>
-          <button className="button" disabled={loading || !query.trim()}>{loading ? 'Working…' : 'Run benchmark'}</button>
-        </form>
-        {benchmark && <div className="mt-5 overflow-x-auto"><p className="mb-3 text-sm text-slate-400">{benchmark.datasetSize.toLocaleString()} documents · “{benchmark.query}”</p><table className="w-full min-w-[760px] text-left text-sm"><thead className="border-b border-slate-800 text-slate-400"><tr><th className="py-2">Engine</th><th>Min</th><th>Average</th><th>p50</th><th>p95</th><th>p99</th><th>Max</th><th>QPS</th><th>Results</th></tr></thead><tbody>{benchmark.results.map((result) => <tr className="border-b border-slate-800/70" key={result.engine}><td className="py-3">{label[result.engine]}</td><td>{asMs(result.minMs)}</td><td>{asMs(result.avgMs)}</td><td>{asMs(result.p50Ms)}</td><td>{asMs(result.p95Ms)}</td><td>{asMs(result.p99Ms)}</td><td>{asMs(result.maxMs)}</td><td>{result.qps.toFixed(2)}</td><td>{result.resultCount}</td></tr>)}</tbody></table></div>}
-      </section>
+  <h2 className="font-semibold">3. Benchmark</h2>
+
+  <form
+    className="mt-4 flex flex-wrap items-end gap-3"
+    onSubmit={runBenchmark}
+  >
+    <label>
+      <span className="label">Iterations</span>
+      <input
+        className="field w-28"
+        type="number"
+        min="1"
+        max="10000"
+        value={iterations}
+        onChange={(event) => setIterations(Number(event.target.value))}
+      />
+    </label>
+
+    <button
+      className="button"
+      disabled={loading || !query.trim()}
+    >
+      {loading ? "Working…" : "Run benchmark"}
+    </button>
+  </form>
+
+  {benchmark && (
+    <div className="mt-5 overflow-x-auto">
+      <p className="mb-3 text-sm text-slate-400">
+        {benchmark.datasetSize.toLocaleString()} documents · “{benchmark.query}”
+      </p>
+
+      <table className="w-full min-w-[760px] text-left text-sm">
+        <thead className="border-b border-slate-800 text-slate-400">
+          <tr>
+            <th className="py-2">Engine</th>
+            <th>Min</th>
+            <th>Average</th>
+            <th>p50</th>
+            <th>p95</th>
+            <th>p99</th>
+            <th>Max</th>
+            <th>QPS</th>
+          </tr>
+        </thead>
+
+        <tbody>
+          {benchmark.results.map((result) => (
+            <tr
+              className="border-b border-slate-800/70"
+              key={result.engine}
+            >
+              <td className="py-3">{label[result.engine]}</td>
+              <td>{asMs(result.minMs)}</td>
+              <td>{asMs(result.avgMs)}</td>
+              <td>{asMs(result.p50Ms)}</td>
+              <td>{asMs(result.p95Ms)}</td>
+              <td>{asMs(result.p99Ms)}</td>
+              <td>{asMs(result.maxMs)}</td>
+              <td>{result.qps.toFixed(2)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )}
+</section>
     </main>
   );
 }
