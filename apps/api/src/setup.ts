@@ -1,5 +1,6 @@
+import { elasticsearch } from './elasticsearch-client.js';
+import { config } from './config.js';
 import { pool } from './db.js';
-import { ensureElasticsearchIndex } from './services/elasticsearch-index.js';
 
 export async function prepareServices(): Promise<void> {
   await pool.query(`
@@ -15,5 +16,38 @@ export async function prepareServices(): Promise<void> {
     CREATE INDEX IF NOT EXISTS documents_search_vector_idx
       ON documents USING GIN (search_vector);
   `);
-  await ensureElasticsearchIndex();
+
+  const exists = await elasticsearch.indices.exists({ index: config.elasticsearchIndex });
+  if (!exists) {
+    await elasticsearch.indices.create({
+      index: config.elasticsearchIndex,
+      mappings: {
+        dynamic: true,
+        properties: {
+          id: { type: 'keyword' },
+          document: { type: 'object', dynamic: true },
+          // This is the combined text from every CSV column except the ID column.
+          searchable_text: { type: 'text', analyzer: 'standard' },
+        },
+      },
+    });
+  }
+}
+
+export async function recreateElasticsearchIndex(): Promise<void> {
+  const exists = await elasticsearch.indices.exists({ index: config.elasticsearchIndex });
+  if (exists) await elasticsearch.indices.delete({ index: config.elasticsearchIndex });
+
+  await elasticsearch.indices.create({
+    index: config.elasticsearchIndex,
+    mappings: {
+      dynamic: true,
+      properties: {
+        id: { type: 'keyword' },
+        document: { type: 'object', dynamic: true },
+        // This is the combined text from every CSV column except the ID column.
+        searchable_text: { type: 'text', analyzer: 'standard' },
+      },
+    },
+  });
 }

@@ -1,9 +1,9 @@
-export function now(): bigint {
-  return process.hrtime.bigint();
+export function now(): number {
+  return performance.now();
 }
 
-export function elapsedMs(start: bigint): number {
-  return Number(process.hrtime.bigint() - start) / 1_000_000;
+export function elapsedMs(start: number): number {
+  return performance.now() - start;
 }
 
 export function rounded(value: number): number {

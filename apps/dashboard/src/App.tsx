@@ -8,7 +8,6 @@ type SearchResponse = {
   engine: Engine;
   searchLatencyMs: number;
   resultCount: number;
-  results: Array<{ id: string; document: Record<string, string>; score: number | null }>;
 };
 type Benchmark = {
   datasetSize: number;
@@ -128,28 +127,17 @@ export function App() {
       </section>
 
       <section className="grid gap-4 lg:grid-cols-3">
-  {engines.map((engine) => {
-    const result = searchResults[engine];
-
-    return (
-      <article className="panel min-w-0" key={engine}>
-        <h3 className="font-semibold">{label[engine]}</h3>
-
-        {!result && (
-          <p className="mt-3 text-sm text-slate-500">
-            No search yet.
-          </p>
-        )}
-
-        {result && (
-          <p className="mt-2 text-sm text-cyan-300">
-            {asMs(result.searchLatencyMs)} 
-          </p>
-        )}
-      </article>
-    );
-  })}
-</section>
+        {engines.map((engine) => {
+          const result = searchResults[engine];
+          return (
+            <article className="panel min-w-0" key={engine}>
+              <h3 className="font-semibold">{label[engine]}</h3>
+              {!result && <p className="mt-3 text-sm text-slate-500">No search yet.</p>}
+              {result && <p className="mt-2 text-sm text-cyan-300">{asMs(result.searchLatencyMs)}</p>}
+            </article>
+          );
+        })}
+      </section>
 
       <section className="panel">
   <h2 className="font-semibold">3. Benchmark</h2>

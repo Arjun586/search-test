@@ -1,12 +1,8 @@
 import { Router, type Request, type Response } from 'express';
 import { limits } from '../config.js';
 import { HttpError } from '../lib/http-error.js';
-import { searchWithElasticsearch } from '../services/elasticsearch-search.js';
-import { searchWithIlike } from '../services/ilike-search.js';
-import { searchWithPostgresFts } from '../services/postgres-fts.js';
-import type { SearchResponse } from '../types.js';
-
-type SearchFunction = (query: string, limit: number) => Promise<SearchResponse>;
+import { searchEngines } from '../services/search.js';
+import type { SearchEngine } from '../types.js';
 
 function readSearchInput(request: Request): { query: string; limit: number } {
   const query = typeof request.query.q === 'string' ? request.query.q.trim() : '';
@@ -27,14 +23,12 @@ function readSearchInput(request: Request): { query: string; limit: number } {
   return { query, limit };
 }
 
-function handler(search: SearchFunction) {
-  return async (request: Request, response: Response): Promise<void> => {
-    const { query, limit } = readSearchInput(request);
-    response.json(await search(query, limit));
-  };
-}
-
 export const searchRouter = Router();
-searchRouter.get('/ilike', handler(searchWithIlike));
-searchRouter.get('/postgres-fts', handler(searchWithPostgresFts));
-searchRouter.get('/elasticsearch', handler(searchWithElasticsearch));
+
+searchRouter.get('/:engine', async (request: Request, response: Response): Promise<void> => {
+  const engine = request.params.engine as SearchEngine;
+  const searchFn = searchEngines[engine];
+  if (!searchFn) throw new HttpError(404, `Unknown search engine: ${engine}`);
+  const { query, limit } = readSearchInput(request);
+  response.json(await searchFn(query, limit));
+});
