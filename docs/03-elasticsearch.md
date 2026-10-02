@@ -67,15 +67,15 @@ Elasticsearch automatically ranks results using the **BM25 algorithm**, which fa
 
 | ✅ Pros | ❌ Cons |
 |---|---|
-| Blazing fast search speeds even with millions of records | Extra operational complexity (separate service to manage and monitor) |
-| Distributed by design (can scale horizontally across many servers) | Data must be synchronized between PostgreSQL and Elasticsearch |
-| Industry-standard relevance scoring (BM25) and rich analyzers | Consumes more RAM and memory |
+| Blazing fast search speeds across massive datasets | Extra operational complexity (separate service to manage and monitor) |
+| Distributed by design (scales horizontally across many nodes) | Data must be synchronized between PostgreSQL and Elasticsearch |
+| Industry-standard relevance scoring (BM25) and configurable analyzers | Consumes more RAM and heap memory |
 
 ---
 
 ## 🎯 When to use it?
-- You have **millions of records** or high concurrent search traffic.
-- You need **sub-millisecond latency** for heavy search workloads (e.g. e-commerce search, log aggregation).
-- Your primary database (PostgreSQL) is getting overloaded by search queries.
+- You have **large datasets** or high concurrent search traffic (as a rough rule of thumb, multi-million records or search volume that competes for resources with transactional DB workloads).
+- You need **single-digit millisecond latency** for heavy search workloads (e.g. e-commerce search, log aggregation; our 100k benchmark recorded 5.60 ms min and 8.09 ms average).
+- Your primary database (PostgreSQL) is getting overloaded by search queries or complex aggregations.
 
 > **Key Takeaway:** The gold standard when you outgrow your primary database and need dedicated, massive-scale search power.

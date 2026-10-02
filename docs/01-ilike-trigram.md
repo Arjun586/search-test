@@ -43,11 +43,18 @@ Returns matching rows instantly
 
 2. **Search Query (`search.ts`):**
    ```sql
-   SELECT id, document
-   FROM documents
-   WHERE searchable_text ILIKE '%' || $1 || '%'
+   WITH matched AS (
+     SELECT id, document, count(*) OVER () AS total_count
+     FROM documents
+     WHERE searchable_text ILIKE '%' || $1 || '%'
+   )
+   SELECT id, document, total_count
+   FROM matched
    LIMIT 5;
    ```
+
+   > ⚠️ **Why `count(*) OVER ()` matters:**  
+   > Real-world search UIs require both paginated results (e.g. top 5) and the total count of matches across the dataset (e.g. "Showing 1–5 of 12,511 results"). The window function `count(*) OVER ()` computes this total count across the full corpus. Because our benchmark tested the common word `"database"` (matching 12,511 rows), Postgres had to evaluate every match across the 100k documents. If you omit `count(*) OVER ()`, Postgres can stop scanning after finding the first 5 rows (early exit), making ILIKE appear artificially faster than in real pagination workloads.
 
 ---
 
@@ -56,14 +63,15 @@ Returns matching rows instantly
 | ✅ Pros | ❌ Cons |
 |---|---|
 | Finds partial words and substrings (e.g., `phone` finds `iPhone`) | No relevance ranking (a match is just yes/no) |
-| Case-insensitive out of the box | Slower than FTS on full sentences |
+| Case-insensitive out of the box | Performance depends heavily on term frequency (common words matching many rows require scanning large trigram lists) |
 | Works inside your existing PostgreSQL database | Trigram indexes can take up significant storage space |
 
 ---
 
 ## 🎯 When to use it?
-- You need to search **partial words**, **usernames**, **emails**, or **SKUs**.
-- You want simple substring matching without installing another search engine.
-- You don't need fancy relevance scores (sorting by "best match").
+- You need to search **partial words**, **usernames**, **emails**, or **SKUs** where character-level substring matching is necessary.
+- You have high selectivity (searching specific terms matching few documents). Note: on a common word like `"database"` matching 12,511 of 100,000 documents with full corpus counting, ILIKE averaged ~558 ms.
+- You want simple substring matching without installing or managing an external search engine.
+- You don't need relevance ranking (sorting by "best match").
 
-> **Key Takeaway:** Perfect for "starts with", "contains", or partial word matching directly in PostgreSQL.
+> **Key Takeaway:** Perfect for "starts with", "contains", or partial word matching directly in PostgreSQL, but avoid using it for frequent common-word text search across large tables.
