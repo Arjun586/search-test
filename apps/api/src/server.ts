@@ -1,12 +1,8 @@
 import cors from 'cors';
 import express, { type ErrorRequestHandler } from 'express';
 import { config } from './config.js';
-import { postgresReady, pool } from './db.js';
-import { elasticsearch, elasticsearchReady } from './elasticsearch-client.js';
-import { HttpError } from './lib/http-error.js';
-import { benchmarkRouter } from './routes/benchmark.js';
-import { dataRouter } from './routes/data.js';
-import { searchRouter } from './routes/search.js';
+import { pool, postgresReady, elasticsearch, elasticsearchReady } from './db.js';
+import { HttpError, routes } from './routes.js';
 import { prepareServices } from './setup.js';
 
 const app = express();
@@ -19,9 +15,7 @@ app.get('/health', async (_request, response) => {
   response.status(ready ? 200 : 503).json({ status: ready ? 'ready' : 'waiting for Docker services' });
 });
 
-app.use('/data', dataRouter);
-app.use('/search', searchRouter);
-app.use('/benchmark', benchmarkRouter);
+app.use(routes);
 
 const errorHandler: ErrorRequestHandler = (error, _request, response, _next) => {
   const status = error instanceof HttpError ? error.status : 500;

@@ -3,8 +3,7 @@ import { readdir } from 'node:fs/promises';
 import path from 'node:path';
 import { parse } from 'csv-parse';
 import { config } from '../config.js';
-import { pool } from '../db.js';
-import { elasticsearch } from '../elasticsearch-client.js';
+import { elasticsearch, pool } from '../db.js';
 import { recreateElasticsearchIndex } from '../setup.js';
 
 const inputFolder = path.resolve(process.cwd(), 'data');

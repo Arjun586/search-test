@@ -7,7 +7,7 @@ export const config = {
 };
 
 export const limits = {
-  searchLimitDefault: 20,
+  searchLimitDefault: 5,
   searchLimitMaximum: 100,
   queryMaximumLength: 500,
   benchmarkIterationsMaximum: 10_000,

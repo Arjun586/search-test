@@ -1,57 +1,72 @@
-import { pool } from '../db.js';
-import { elasticsearch } from '../elasticsearch-client.js';
 import { config } from '../config.js';
-import { elapsedMs, now, rounded } from '../lib/timing.js';
+import { elasticsearch, pool } from '../db.js';
 import type { SearchEngine, SearchResponse } from '../types.js';
+
+const now = () => performance.now();
+const elapsedMs = (start: number) => performance.now() - start;
+const rounded = (n: number) => Math.round(n * 1000) / 1000;
 
 // ─── ILIKE ────────────────────────────────────────────────────────────────────
 
-/** Baseline search: deliberately uses PostgreSQL ILIKE with no trigram index.
- *  LIMIT is intentionally omitted so the engine must scan the full table
- *  when there are no matches, making the benchmark meaningful. */
-export async function searchWithIlike(query: string, _limit: number): Promise<SearchResponse> {
+type IlikeRow = { id: string; document: Record<string, unknown>; total_count: string };
+
+/** PostgreSQL ILIKE: Full-table scan evaluating all documents.
+ *  Uses a window count to calculate total corpus matches while returning the filtered top documents. */
+export async function searchWithIlike(query: string, limit = 5): Promise<SearchResponse> {
   const started = now();
-  const response = await pool.query<{ id: string }>(
-    `SELECT id
-     FROM documents
-     WHERE searchable_text ILIKE '%' || $1 || '%'`,
-    [query],
+  const response = await pool.query<IlikeRow>(
+    `WITH matched AS (
+       SELECT id, document, count(*) OVER () AS total_count
+       FROM documents
+       WHERE searchable_text ILIKE '%' || $1 || '%'
+     )
+     SELECT id, document, total_count
+     FROM matched
+     LIMIT $2`,
+    [query, limit],
   );
 
+  const resultCount = response.rows.length > 0 ? Number(response.rows[0].total_count) : 0;
   return {
     engine: 'ilike',
     query,
     searchLatencyMs: rounded(elapsedMs(started)),
-    resultCount: response.rows.length,
-    results: response.rows.map((row) => ({ id: row.id, document: {}, score: null })),
+    resultCount,
+    results: response.rows.map((row) => ({ id: row.id, document: row.document, score: null })),
   };
 }
 
 // ─── PostgreSQL FTS ───────────────────────────────────────────────────────────
 
-type FtsRow = { id: string; document: Record<string, unknown>; score: number | string };
+type FtsRow = { id: string; document: Record<string, unknown>; score: number | string; total_count: string };
 
-/** Native PostgreSQL FTS: tsvector + websearch_to_tsquery + ts_rank. */
-export async function searchWithPostgresFts(query: string, limit: number): Promise<SearchResponse> {
+/** Native PostgreSQL FTS: tsvector + websearch_to_tsquery + ts_rank.
+ *  Scores all matching documents in the corpus and returns the top 5 with the full match count. */
+export async function searchWithPostgresFts(query: string, limit = 5): Promise<SearchResponse> {
   const started = now();
   const response = await pool.query<FtsRow>(
     `WITH parsed_query AS (
        SELECT websearch_to_tsquery('english', $1) AS value
+     ),
+     matched AS (
+       SELECT d.id, d.document, ts_rank(d.search_vector, q.value) AS score, count(*) OVER () AS total_count
+       FROM documents d
+       CROSS JOIN parsed_query q
+       WHERE d.search_vector @@ q.value
      )
-     SELECT d.id, d.document, ts_rank(d.search_vector, q.value) AS score
-     FROM documents d
-     CROSS JOIN parsed_query q
-     WHERE d.search_vector @@ q.value
+     SELECT id, document, score, total_count
+     FROM matched
      ORDER BY score DESC
      LIMIT $2`,
     [query, limit],
   );
 
+  const resultCount = response.rows.length > 0 ? Number(response.rows[0].total_count) : 0;
   return {
     engine: 'postgres-fts',
     query,
     searchLatencyMs: rounded(elapsedMs(started)),
-    resultCount: response.rows.length,
+    resultCount,
     results: response.rows.map((row) => ({
       id: row.id,
       document: row.document,
@@ -64,12 +79,13 @@ export async function searchWithPostgresFts(query: string, limit: number): Promi
 
 type IndexedDocument = { id: string; document: Record<string, unknown>; searchable_text: string };
 
-/** Elasticsearch queries the normalized text built from all CSV columns except the ID column. */
-export async function searchWithElasticsearch(query: string, limit: number): Promise<SearchResponse> {
+/** Elasticsearch: Queries searchable_text with track_total_hits enabled to evaluate the full index. */
+export async function searchWithElasticsearch(query: string, limit = 5): Promise<SearchResponse> {
   const started = now();
   const response = await elasticsearch.search<IndexedDocument>({
     index: config.elasticsearchIndex,
     size: limit,
+    track_total_hits: true,
     query: {
       multi_match: {
         query,
@@ -79,11 +95,14 @@ export async function searchWithElasticsearch(query: string, limit: number): Pro
     },
   });
 
+  const totalHits = response.hits.total;
+  const resultCount = typeof totalHits === 'number' ? totalHits : (totalHits?.value ?? response.hits.hits.length);
+
   return {
     engine: 'elasticsearch',
     query,
     searchLatencyMs: rounded(elapsedMs(started)),
-    resultCount: response.hits.hits.length,
+    resultCount,
     results: response.hits.hits.flatMap((hit) => {
       if (!hit._source) return [];
       return [{

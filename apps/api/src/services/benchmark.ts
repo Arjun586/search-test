@@ -1,7 +1,10 @@
 import { pool } from '../db.js';
-import { elapsedMs, now, rounded } from '../lib/timing.js';
 import type { BenchmarkConfig, BenchmarkResult } from '../types.js';
 import { searchEngines } from './search.js';
+
+const now = () => performance.now();
+const elapsedMs = (start: number) => performance.now() - start;
+const rounded = (n: number) => Math.round(n * 1000) / 1000;
 
 function calculateStatistics(samples: number[], totalMs: number, resultCount: number): BenchmarkResult {
   const sorted = [...samples].sort((a, b) => a - b);

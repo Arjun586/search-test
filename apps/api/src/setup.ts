@@ -1,6 +1,5 @@
-import { elasticsearch } from './elasticsearch-client.js';
 import { config } from './config.js';
-import { pool } from './db.js';
+import { elasticsearch, pool } from './db.js';
 
 export async function prepareServices(): Promise<void> {
   await pool.query(`
