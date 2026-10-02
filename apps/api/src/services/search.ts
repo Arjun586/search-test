@@ -10,7 +10,7 @@ const rounded = (n: number) => Math.round(n * 1000) / 1000;
 
 type IlikeRow = { id: string; document: Record<string, unknown>; total_count: string };
 
-/** PostgreSQL ILIKE: Full-table scan evaluating all documents.
+/** PostgreSQL ILIKE: Evaluates documents using a GIN trigram index.
  *  Uses a window count to calculate total corpus matches while returning the filtered top documents. */
 export async function searchWithIlike(query: string, limit = 5): Promise<SearchResponse> {
   const started = now();
