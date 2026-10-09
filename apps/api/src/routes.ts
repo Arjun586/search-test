@@ -50,8 +50,14 @@ function readBenchmarkConfig(request: Request): BenchmarkConfig {
   if (!query || query.length > limits.queryMaximumLength) {
     throw new HttpError(400, `query is required and must be at most ${limits.queryMaximumLength} characters.`);
   }
+  const rawEngine = body.engine;
+  const engine =
+    rawEngine === 'ilike' || rawEngine === 'postgres-fts' || rawEngine === 'elasticsearch'
+      ? (rawEngine as SearchEngine)
+      : undefined;
   return {
     query,
+    engine,
     iterations: integer(body.iterations, 100, limits.benchmarkIterationsMaximum, 'iterations'),
     warmupIterations: integer(body.warmupIterations, 10, limits.benchmarkWarmupMaximum, 'warmupIterations'),
     limit: integer(body.limit, limits.searchLimitDefault, limits.searchLimitMaximum, 'limit'),

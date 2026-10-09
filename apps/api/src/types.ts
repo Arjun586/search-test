@@ -16,6 +16,7 @@ export type SearchResponse = {
 
 export type BenchmarkConfig = {
   query: string;
+  engine?: SearchEngine;
   iterations: number;
   warmupIterations: number;
   limit: number;

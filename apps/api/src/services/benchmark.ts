@@ -45,8 +45,12 @@ async function benchmarkOne(
 
 export async function runBenchmark(config: BenchmarkConfig) {
   const count = await pool.query<{ count: string }>('SELECT count(*) FROM documents');
+  const targetEngines = config.engine
+    ? [config.engine]
+    : (Object.keys(searchEngines) as Array<keyof typeof searchEngines>);
+
   const results = [];
-  for (const engine of Object.keys(searchEngines) as Array<keyof typeof searchEngines>) {
+  for (const engine of targetEngines) {
     results.push({ engine, ...(await benchmarkOne(engine, config)) });
   }
   return { datasetSize: Number(count.rows[0].count), query: config.query, results };

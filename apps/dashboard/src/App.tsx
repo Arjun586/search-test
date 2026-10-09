@@ -15,20 +15,21 @@ type SearchResponse = {
   resultCount: number;
   results: SearchResultItem[];
 };
+type BenchmarkResultRow = {
+  engine: Engine;
+  minMs: number;
+  avgMs: number;
+  p50Ms: number;
+  p95Ms: number;
+  p99Ms: number;
+  maxMs: number;
+  qps: number;
+  resultCount: number;
+};
 type Benchmark = {
   datasetSize: number;
   query: string;
-  results: Array<{
-    engine: Engine;
-    minMs: number;
-    avgMs: number;
-    p50Ms: number;
-    p95Ms: number;
-    p99Ms: number;
-    maxMs: number;
-    qps: number;
-    resultCount: number;
-  }>;
+  results: BenchmarkResultRow[];
 };
 
 const label: Record<Engine, string> = {
@@ -53,14 +54,16 @@ function asMs(value: number) {
 
 export function App() {
   const [message, setMessage] = useState('Put one CSV file in data, then click Load CSV.');
-  const [loading, setLoading] = useState(false);
+  const [loadingAction, setLoadingAction] = useState<string | null>(null);
   const [query, setQuery] = useState('');
   const [searchResults, setSearchResults] = useState<Partial<Record<Engine, SearchResponse>>>({});
   const [benchmark, setBenchmark] = useState<Benchmark>();
   const [iterations, setIterations] = useState(100);
 
+  const loading = Boolean(loadingAction);
+
   async function loadCsv() {
-    setLoading(true);
+    setLoadingAction('loadCsv');
     setMessage('Loading CSV into PostgreSQL and Elasticsearch…');
     try {
       const result = await request<{ fileName: string; documentCount: number; columns: string[] }>('/data/import', { method: 'POST' });
@@ -70,44 +73,88 @@ export function App() {
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'CSV import failed.');
     } finally {
-      setLoading(false);
+      setLoadingAction(null);
     }
   }
 
-  async function search(event: FormEvent) {
-    event.preventDefault();
-    if (!query.trim()) return;
-    setLoading(true);
-    setMessage('Searching all three engines (full scan, top 5 filtered)…');
+  async function searchSingle(engine: Engine, targetQuery?: string) {
+    const q = (targetQuery ?? query).trim();
+    if (!q) return;
+    setLoadingAction(`search-${engine}`);
+    setMessage(`Searching ${label[engine]}…`);
     try {
-      const results = await Promise.all(
-        engines.map((engine) => request<SearchResponse>(`/search/${engine}?q=${encodeURIComponent(query)}&limit=5`)),
-      );
-      setSearchResults(Object.fromEntries(results.map((result) => [result.engine, result])));
-      setMessage('Search complete.');
+      const result = await request<SearchResponse>(`/search/${engine}?q=${encodeURIComponent(q)}&limit=5`);
+      setSearchResults((prev) => ({ ...prev, [engine]: result }));
+      setMessage(`Completed ${label[engine]} in ${asMs(result.searchLatencyMs)} (${result.resultCount.toLocaleString()} matches).`);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : `${label[engine]} search failed.`);
+    } finally {
+      setLoadingAction(null);
+    }
+  }
+
+  async function searchAllSequential(event?: FormEvent) {
+    event?.preventDefault();
+    const q = query.trim();
+    if (!q) return;
+    setLoadingAction('search-all');
+    setMessage('Searching engines sequentially (one by one) to prevent database contention…');
+    try {
+      for (const engine of engines) {
+        setMessage(`Searching ${label[engine]} (${engines.indexOf(engine) + 1}/${engines.length})…`);
+        const result = await request<SearchResponse>(`/search/${engine}?q=${encodeURIComponent(q)}&limit=5`);
+        setSearchResults((prev) => ({ ...prev, [engine]: result }));
+      }
+      setMessage('All searches completed sequentially.');
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Search failed.');
     } finally {
-      setLoading(false);
+      setLoadingAction(null);
     }
   }
 
-  async function runBenchmark(event: FormEvent) {
-    event.preventDefault();
-    if (!query.trim()) return;
-    setLoading(true);
-    setMessage('Running benchmark across all three engines (full scan, top 5 filtered)…');
+  async function runBenchmarkEngine(engine?: Engine) {
+    const q = query.trim();
+    if (!q) return;
+    const actionKey = engine ? `benchmark-${engine}` : 'benchmark-all';
+    setLoadingAction(actionKey);
+    setMessage(
+      engine
+        ? `Benchmarking ${label[engine]} (${iterations} iterations)…`
+        : `Benchmarking all engines sequentially (${iterations} iterations)…`,
+    );
     try {
       const result = await request<Benchmark>('/benchmark', {
         method: 'POST',
-        body: JSON.stringify({ query: query.trim(), iterations, warmupIterations: 10, limit: 5 }),
+        body: JSON.stringify({
+          query: q,
+          iterations,
+          warmupIterations: 10,
+          limit: 5,
+          engine,
+        }),
       });
-      setBenchmark(result);
-      setMessage('Benchmark complete.');
+
+      setBenchmark((prev) => {
+        if (!prev || prev.query !== q || !engine) {
+          return result;
+        }
+        // Merge single engine benchmark into existing result table
+        const otherResults = prev.results.filter((r) => r.engine !== engine);
+        const merged = [...otherResults, ...result.results].sort(
+          (a, b) => engines.indexOf(a.engine) - engines.indexOf(b.engine),
+        );
+        return { ...result, results: merged };
+      });
+      setMessage(
+        engine
+          ? `Benchmark for ${label[engine]} complete.`
+          : 'Benchmark complete for all engines.',
+      );
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Benchmark failed.');
     } finally {
-      setLoading(false);
+      setLoadingAction(null);
     }
   }
 
@@ -125,40 +172,86 @@ export function App() {
           <p className="mt-1 text-sm text-slate-400">The import replaces the currently loaded dataset.</p>
         </div>
         <button className="button" onClick={loadCsv} disabled={loading}>
-          {loading ? 'Working…' : 'Load CSV'}
+          {loadingAction === 'loadCsv' ? 'Working…' : 'Load CSV'}
         </button>
       </section>
 
       <p className="rounded-lg border border-slate-800 bg-slate-900 px-4 py-3 text-sm text-slate-300">{message}</p>
 
       <section className="panel">
-        <h2 className="font-semibold">2. Search</h2>
-        <form className="mt-4 flex flex-col gap-3 sm:flex-row" onSubmit={search}>
-          <input
-            className="field flex-1"
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder="Enter a search query"
-            required
-          />
-          <button className="button" disabled={loading}>
-            {loading ? 'Working…' : 'Search all'}
-          </button>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <h2 className="font-semibold">2. Search</h2>
+            <p className="mt-1 text-xs text-slate-400">
+              Run searches one-by-one or sequentially to prevent PostgreSQL CPU & buffer cache competition.
+            </p>
+          </div>
+        </div>
+
+        <form className="mt-4 flex flex-col gap-3" onSubmit={searchAllSequential}>
+          <div className="flex flex-col gap-3 sm:flex-row">
+            <input
+              className="field flex-1"
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="Enter a search query (e.g. database, kuber, replication)"
+              required
+            />
+            <button
+              type="submit"
+              className="button shrink-0"
+              disabled={loading || !query.trim()}
+            >
+              {loadingAction === 'search-all' ? 'Searching…' : 'Search All (Sequential)'}
+            </button>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2 pt-1">
+            <span className="text-xs font-semibold text-slate-400">Run Individual Search:</span>
+            {engines.map((engine) => (
+              <button
+                key={engine}
+                type="button"
+                className="button-secondary text-xs py-1.5 px-3"
+                disabled={loading || !query.trim()}
+                onClick={() => searchSingle(engine)}
+              >
+                {loadingAction === `search-${engine}` ? 'Searching…' : label[engine]}
+              </button>
+            ))}
+          </div>
         </form>
       </section>
 
       <section className="grid gap-4 lg:grid-cols-3">
         {engines.map((engine) => {
           const result = searchResults[engine];
+          const isSearchingThis = loadingAction === `search-${engine}`;
           return (
             <article className="panel flex flex-col min-w-0" key={engine}>
-              <div className="flex items-center justify-between">
-                <h3 className="font-semibold">{label[engine]}</h3>
-                {result && (
-                  <span className="text-xs text-slate-400">
-                    {result.resultCount.toLocaleString()} match{result.resultCount === 1 ? '' : 'es'}
-                  </span>
-                )}
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <h3 className="font-semibold">{label[engine]}</h3>
+                  {isSearchingThis && (
+                    <span className="animate-pulse text-xs text-cyan-400 font-medium">Running…</span>
+                  )}
+                </div>
+                <div className="flex items-center gap-2">
+                  {result && (
+                    <span className="text-xs text-slate-400">
+                      {result.resultCount.toLocaleString()} match{result.resultCount === 1 ? '' : 'es'}
+                    </span>
+                  )}
+                  <button
+                    type="button"
+                    className="button-sm"
+                    disabled={loading || !query.trim()}
+                    onClick={() => searchSingle(engine)}
+                    title={`Run only ${label[engine]}`}
+                  >
+                    Run
+                  </button>
+                </div>
               </div>
 
               {!result && <p className="mt-3 text-sm text-slate-500">No search yet.</p>}
@@ -202,25 +295,52 @@ export function App() {
       </section>
 
       <section className="panel">
-        <h2 className="font-semibold">3. Benchmark</h2>
+        <div>
+          <h2 className="font-semibold">3. Benchmark</h2>
+          <p className="mt-1 text-xs text-slate-400">
+            Measure latency percentiles & QPS. Run individual engines to isolate Neon and Elasticsearch performance.
+          </p>
+        </div>
 
-        <form className="mt-4 flex flex-wrap items-end gap-3" onSubmit={runBenchmark}>
-          <label>
-            <span className="label">Iterations</span>
-            <input
-              className="field w-28"
-              type="number"
-              min="1"
-              max="10000"
-              value={iterations}
-              onChange={(event) => setIterations(Number(event.target.value))}
-            />
-          </label>
+        <div className="mt-4 flex flex-col gap-4">
+          <div className="flex flex-wrap items-end gap-3">
+            <label>
+              <span className="label">Iterations</span>
+              <input
+                className="field w-28"
+                type="number"
+                min="1"
+                max="10000"
+                value={iterations}
+                onChange={(event) => setIterations(Number(event.target.value))}
+              />
+            </label>
 
-          <button className="button" disabled={loading || !query.trim()}>
-            {loading ? 'Working…' : 'Run benchmark'}
-          </button>
-        </form>
+            <button
+              type="button"
+              className="button"
+              disabled={loading || !query.trim()}
+              onClick={() => runBenchmarkEngine()}
+            >
+              {loadingAction === 'benchmark-all' ? 'Benchmarking…' : 'Benchmark All (Sequential)'}
+            </button>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-slate-800/80">
+            <span className="text-xs font-semibold text-slate-400">Run Individual Benchmark:</span>
+            {engines.map((engine) => (
+              <button
+                key={engine}
+                type="button"
+                className="button-secondary text-xs py-1.5 px-3"
+                disabled={loading || !query.trim()}
+                onClick={() => runBenchmarkEngine(engine)}
+              >
+                {loadingAction === `benchmark-${engine}` ? 'Running…' : `Benchmark ${label[engine]}`}
+              </button>
+            ))}
+          </div>
+        </div>
 
         {benchmark && (
           <div className="mt-5 overflow-x-auto">
@@ -265,3 +385,4 @@ export function App() {
     </main>
   );
 }
+

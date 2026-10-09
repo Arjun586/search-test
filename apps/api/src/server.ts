@@ -36,7 +36,7 @@ async function start(): Promise<void> {
 }
 
 start().catch(async (error) => {
-  console.error('Could not connect to Docker services. Run "docker compose up -d" first.');
+  console.error('Could not connect to database or search service.');
   console.error(error instanceof Error ? error.message : error);
   await Promise.all([pool.end(), elasticsearch.close()]);
   process.exitCode = 1;
