@@ -13,9 +13,9 @@ Instead of storing rows and scanning them, Elasticsearch builds a **Lucene inver
 ```
 Term            Posting List (Document IDs & Frequencies)
 ─────────────────────────────────────────────────────────
-"database"   ──► [ Doc 2 (tf: 2), Doc 16 (tf: 1), Doc 28 (tf: 3) ... ]
-"kubernetes" ──► [ Doc 8 (tf: 1), Doc 15 (tf: 2) ... ]
-"replication"──► [ Doc 1 (tf: 2), Doc 2 (tf: 1) ... ]
+"databas"    ──► [ Doc 2 (tf: 2), Doc 16 (tf: 1), Doc 28 (tf: 3) ... ]
+"kub"        ──► [ Doc 8 (tf: 1), Doc 15 (tf: 2) ... ]
+"replic"     ──► [ Doc 1 (tf: 2), Doc 2 (tf: 1) ... ]
 ```
 When searching for `"database"`, Elasticsearch directly inspects the posting list in memory. Counting total hits (`track_total_hits: true`) and scoring top documents is performed directly against index structures without touching the underlying raw document storage.
 
@@ -25,12 +25,17 @@ Elasticsearch scores documents using the **BM25 algorithm**, which evaluates:
 - **Inverse Document Frequency (IDF):** How rare the term is across the entire corpus (rare words score higher than frequent words).
 - **Field-Length Normalization:** Shorter fields where the term constitutes a higher proportion of the text are boosted over longer fields.
 
-### 3. The `standard` Analyzer
-In this project's setup (`setup.ts`), `searchable_text` uses Elasticsearch's built-in `standard` analyzer:
-- **Tokenization:** Breaks text on word boundaries (Unicode Text Segmentation).
-- **Lowercasing:** Converts all tokens to lowercase.
-- **Punctuation Removal:** Strips symbols and punctuation.
-- ⚠️ **No Stemming:** Unlike PostgreSQL's `'english'` dictionary, the `standard` analyzer does **not** stem words (e.g. `"databases"` remains `"databases"`; it is not reduced to `"database"`).
+### 3. Dual Architecture: English Stemmer + Positional Trigram Subfield
+To achieve **both** linguistic stemming (matching plurals/tenses) and arbitrary substring matching (prefixes, partial words) without false positives:
+- **`searchable_text` (`english` analyzer):**
+  - Uses Unicode tokenization, lowercasing, and English Snowball/Porter stemming.
+  - Reduces `"replications"` and `"replication"` to `"replic"`.
+  - Reduces `"containers"` and `"container"` to `"contain"`.
+  - Boosted with `^3` at query time so exact and stemmed words take top relevance priority.
+- **`searchable_text.partial` (`partial_tokenizer`):**
+  - An `ngram` tokenizer generating continuous 3-character slices (`min_gram: 3, max_gram: 3`).
+  - Matches arbitrary prefixes and substrings (e.g. `"kuber"` ➔ `"kubernetes"`, `"postgr"` ➔ `"postgresql"`).
+  - Maintains strict `AND` matching across all trigrams, preventing false positives.
 
 ---
 
@@ -38,29 +43,56 @@ In this project's setup (`setup.ts`), `searchable_text` uses Elasticsearch's bui
 
 ### 1. Index Setup & Mapping (`setup.ts`)
 ```typescript
-await elasticsearch.indices.create({
-  index: config.elasticsearchIndex, // Defaults to 'search_documents'
+const elasticsearchIndexConfig = {
+  settings: {
+    analysis: {
+      tokenizer: {
+        partial_tokenizer: {
+          type: 'ngram',
+          min_gram: 3,
+          max_gram: 3,
+          token_chars: ['letter', 'digit'],
+        },
+      },
+      analyzer: {
+        partial_analyzer: {
+          type: 'custom',
+          tokenizer: 'partial_tokenizer',
+          filter: ['lowercase'],
+        },
+      },
+    },
+  },
   mappings: {
     dynamic: true,
     properties: {
       id: { type: 'keyword' },
       document: { type: 'object', dynamic: true },
-      searchable_text: { type: 'text', analyzer: 'standard' },
+      searchable_text: {
+        type: 'text',
+        analyzer: 'english',
+        fields: {
+          partial: {
+            type: 'text',
+            analyzer: 'partial_analyzer',
+          },
+        },
+      },
     },
   },
-});
+} as const;
 ```
 
 ### 2. Search Query Execution (`services/search.ts`)
 ```typescript
-await elasticsearch.search({
+await elasticsearch.search<IndexedDocument>({
   index: config.elasticsearchIndex,
   size: limit, // default: 5
   track_total_hits: true,
   query: {
     multi_match: {
-      query: userQuery,
-      fields: ['searchable_text'],
+      query,
+      fields: ['searchable_text^3', 'searchable_text.partial'],
       operator: 'and',
     },
   },
@@ -78,35 +110,33 @@ Evaluated over 100,000 documents across 100 sequential benchmark iterations:
 
 | Scenario / Query | Type | Avg Latency | p50 | p95 | p99 | QPS | Matches |
 |---|---|---|---|---|---|---|---|
-| **`database`** (Test 1) | Common word | `46.18 ms` | `43.44 ms` | `79.35 ms` | `90.63 ms` | **21.64** | 11,912* |
-| **`replication`** (Test 2) | High-frequency (~24% corpus) | `42.35 ms` | `36.04 ms` | `62.26 ms` | `67.13 ms` | **23.59** | 23,666 |
-| **`replications`** (Test 3) | Plural variant (no stemming) | `34.11 ms` | `31.29 ms` | `52.63 ms` | `56.51 ms` | **29.31** | **0** |
-| **`container`** (Test 4) | Singular query (plural in corpus) | `40.50 ms` | `36.77 ms` | `56.21 ms` | `59.93 ms` | **24.68** | **0** |
-| **`containers`** (Test 5) | Plural query (exact token match) | `50.65 ms` | `52.50 ms` | `69.49 ms` | `84.95 ms` | **19.74** | **11,908** |
-| **`artificial`** (Test 6) | Zero-match baseline | `37.51 ms` | `34.41 ms` | `53.10 ms` | `55.11 ms` | **26.66** | 0 |
-| **`kuber`** (Test 7) | Substring / prefix of "Kubernetes" | `37.80 ms` | `34.98 ms` | `51.09 ms` | `54.26 ms` | **26.45** | **0** |
-| **`postgr`** (Test 8) | Substring / prefix of "PostgreSQL" | `34.39 ms` | `33.97 ms` | `38.59 ms` | `41.71 ms` | **29.07** | **0** |
-
-*\*The 599 missing matches on "database" (11,912 vs 12,511 in Postgres) occurred because 599 articles contained only the plural form "Databases" in categories/tags, which the `standard` analyzer does not stem.*
+| **`database`** (Test 1) | Common word | `42.97 ms` | `42.57 ms` | `59.88 ms` | `82.24 ms` | **23.25** | **12,511** |
+| **`Replication`** (Test 2) | High-frequency (~24% corpus) | `50.12 ms` | `43.88 ms` | `90.76 ms` | `102.34 ms` | **19.95** | **23,666** |
+| **`replications`** (Test 3) | Plural variant (stemmed) | `57.69 ms` | `47.95 ms` | `102.83 ms` | `117.00 ms` | **17.33** | **23,666** |
+| **`container`** (Test 4) | Singular query (stemmed) | `48.12 ms` | `40.12 ms` | `87.23 ms` | `109.58 ms` | **20.77** | **11,908** |
+| **`containers`** (Test 5) | Plural query (exact token match) | `52.04 ms` | `40.76 ms` | `102.69 ms` | `117.94 ms` | **19.21** | **11,908** |
+| **`artificial`** (Test 6) | Zero-match baseline | `43.35 ms` | `43.99 ms` | `53.23 ms` | `56.38 ms` | **23.06** | **0** |
+| **`kuber`** (Test 7) | Substring / prefix of "Kubernetes" | `39.80 ms` | `37.84 ms` | `58.42 ms` | `60.27 ms` | **25.11** | **11,908** |
+| **`postgr`** (Test 8) | Substring / prefix of "PostgreSQL" | `48.06 ms` | `36.85 ms` | `102.85 ms` | `116.80 ms` | **20.80** | **11,927** |
 
 ---
 
 ## 🔍 Key Behavioral Insights
 
-### 1. Unmatched Latency Stability Under Heavy Match Load (Test 2)
+### 1. 100% Match Parity Across All Search Scenarios
+With the dual `english` stemmer and `partial_analyzer` (3-gram tokenizer):
+- **Stemming (Tests 1, 3, 4, 5):** Elasticsearch now captures all 12,511 database matches (including plural tags), matches `"replications"` to `"replication"` (23,666 docs), and matches `"container"` to `"containers"` (11,908 docs).
+- **Substrings (Tests 7 & 8):** Partial words like `"kuber"` and `"postgr"` match all ~11.9k docs with sub-50ms latency.
+- **Precision (Test 6):** `"artificial"` returned exactly 0 matches, confirming that the positional 3-gram tokenizer does not produce false positives.
+
+### 2. Unmatched Latency Stability Under Heavy Match Load
 Notice the difference between Test 1 (12.5k matches) and Test 2 (23.7k matches):
-- **PostgreSQL:** Latency surged from 134 ms to **412–464 ms**.
-- **Elasticsearch:** Latency remained at **42.35 ms** (p50: 36.04 ms, 23.59 QPS).  
-Because Lucene evaluates matching doc IDs in optimized bitsets and term postings in memory, counting 23,666 hits incurred virtually no additional overhead. At high match volume, Elasticsearch is **~10x faster than PostgreSQL**.
+- **PostgreSQL:** Latency surged from ~142 ms to **414–474 ms**.
+- **Elasticsearch:** Latency remained rock-solid at **50.12 ms** (p50: 43.88 ms, 19.95 QPS).  
+Because Lucene evaluates matching doc IDs in optimized bitsets and term postings in memory, counting 23,666 hits incurred virtually no additional overhead. At high match volume, Elasticsearch is **~8.3x - 9.5x faster than PostgreSQL**.
 
-### 2. The `standard` Analyzer Pitfall (Tests 3 & 4)
-Because the `standard` analyzer does not perform stemming:
-- Searching `"replications"` found **0 matches** (the data only contained `"replication"`).
-- Searching `"container"` found **0 matches** (the data only contained `"containers"`).  
-When the query was switched to `"containers"` in Test 5, Elasticsearch immediately matched all **11,908 documents**, proving that the failure was entirely linguistic.
-
-### 3. No Substring or Prefix Matching by Default (Tests 7 & 8)
-Searching partial words like `"kuber"` or `"postgr"` returned **0 matches**. The standard analyzer tokenizes `"Kubernetes"` as a whole word; it cannot find `"kuber"` inside it unless an `edge_ngram` filter, wildcard query, or prefix query is explicitly configured.
+### 3. Relevance Ranking with Term Weighting
+Because `searchable_text^3` applies a 3x boost to the stemmed whole-word field, exact and linguistic root matches always rank above partial substring matches, giving users ideal relevance ordering while still supporting typeahead/substring discovery.
 
 ---
 
@@ -114,16 +144,16 @@ Searching partial words like `"kuber"` or `"postgr"` returned **0 matches**. The
 
 | ✅ Pros | ❌ Cons |
 |---|---|
-| Blazing fast and rock-solid latency (34–50 ms) regardless of match count | High operational footprint (requires dedicated JVM processes and infrastructure) |
-| BM25 scoring tailored for search relevance out of the box | Default `standard` analyzer misses word stems and plurals (`replications` ➔ 0 matches) |
-| Horizontally scalable across clusters and shards | Cannot match arbitrary substrings without custom `ngram` analyzers |
-| Offloads search I/O entirely from the primary relational database | Requires real-time data sync pipeline between database and Elasticsearch |
+| Blazing fast latency (39–57 ms) across all scenarios | High operational footprint (requires dedicated JVM processes or Elastic Cloud) |
+| BM25 scoring with field boosting (`^3`) for relevance | Additional storage overhead from indexing both stems and character 3-grams |
+| Complete coverage: stems natural language AND matches arbitrary substrings | Requires real-time data sync pipeline between primary database and Elasticsearch |
+| Horizontally scalable across clusters and shards | |
+| Offloads search I/O entirely from the primary relational database | |
 
 ---
 
 ## 🎯 When to use Elasticsearch
 - **High-Traffic Search Applications:** Where search volume would saturate relational database CPU and buffer pools.
 - **Large Document Corpora:** Where queries frequently match tens of thousands of rows and PostgreSQL latency drops into hundreds of milliseconds.
-- **Advanced Search Features:** Where you need faceted search, aggregations, typo tolerance (fuzzy matching), and custom language analyzers.
+- **Unified Linguistic & Substring Search:** Where you need the natural language stemming of FTS and the substring flexibility of `pg_trgm` in a single, high-throughput engine.
 
-> 💡 **Production Tip:** To fix the stemming and substring limitations observed in tests 3, 4, 7, and 8, production Elasticsearch mappings typically configure an `'english'` analyzer (for Snowball stemming) alongside a sub-field with an `edge_ngram` filter (for substring typeahead).

@@ -89,7 +89,7 @@ export async function searchWithElasticsearch(query: string, limit = 5): Promise
     query: {
       multi_match: {
         query,
-        fields: ['searchable_text'],
+        fields: ['searchable_text^3', 'searchable_text.partial'],
         operator: 'and',
       },
     },

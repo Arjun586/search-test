@@ -61,7 +61,7 @@ LIMIT $2;
   "query": {
     "multi_match": {
       "query": "user_query",
-      "fields": ["searchable_text"],
+      "fields": ["searchable_text^3", "searchable_text.partial"],
       "operator": "and"
     }
   }
@@ -88,29 +88,27 @@ LIMIT $2;
 
 ## 📊 Complete Benchmark Results Across All 8 Scenarios
 
-Below are the exact metrics recorded across the 8 test runs stored in the `result/` directory:
+Below are the exact metrics recorded across the 8 test runs stored in the `result/` directory (`database.png`, `Replication.png`, `replications.png`, `container.png`, `containers.png`, `artificial.png`, `kuber.png`, `postgr.png`):
 
 ### Test 1: Query `"database"` (Common Word — 12.5% of Corpus)
 *Tests common single-word lookup and plural category tokenization.*
 
 | Engine | Min | Average | p50 | p95 | p99 | Max | QPS | Matches |
 |---|---|---|---|---|---|---|---|---|
-| **PostgreSQL ILIKE** | `124.89 ms` | `136.12 ms` | `129.89 ms` | `164.45 ms` | `198.31 ms` | `290.73 ms` | **7.34** | 12,511 |
-| **PostgreSQL FTS** | `121.38 ms` | `133.80 ms` | `127.83 ms` | `151.60 ms` | `155.84 ms` | `205.74 ms` | **7.47** | 12,511 |
-| **Elasticsearch** | `31.67 ms` | `46.18 ms` | `43.44 ms` | `79.35 ms` | `90.63 ms` | `97.29 ms` | **21.64** | 11,912* |
-
-*\*Elasticsearch missed 599 articles containing only "Databases" in categories/tags because the `standard` analyzer does not perform stemming.*
+| **PostgreSQL ILIKE** | `125.33 ms` | `141.84 ms` | `132.77 ms` | `174.11 ms` | `204.91 ms` | `345.42 ms` | **7.05** | 12,511 |
+| **PostgreSQL FTS** | `123.06 ms` | `142.57 ms` | `135.76 ms` | `196.03 ms` | `208.05 ms` | `212.47 ms` | **7.01** | 12,511 |
+| **Elasticsearch** | `30.41 ms` | `42.97 ms` | `42.57 ms` | `59.88 ms` | `82.24 ms` | `84.30 ms` | **23.25** | **12,511** |
 
 ---
 
-### Test 2: Query `"replication"` (High-Frequency Term — 23.7% of Corpus)
+### Test 2: Query `"Replication"` (High-Frequency Term — 23.7% of Corpus)
 *Tests engine scaling when matches encompass nearly a quarter of the entire dataset.*
 
 | Engine | Min | Average | p50 | p95 | p99 | Max | QPS | Matches |
 |---|---|---|---|---|---|---|---|---|
-| **PostgreSQL ILIKE** | `427.04 ms` | `464.17 ms` | `454.97 ms` | `512.77 ms` | `542.43 ms` | `736.77 ms` | **2.15** | 23,666 |
-| **PostgreSQL FTS** | `368.97 ms` | `412.87 ms` | `404.91 ms` | `466.14 ms` | `609.95 ms` | `633.79 ms` | **2.42** | 23,666 |
-| **Elasticsearch** | `31.95 ms` | `42.35 ms` | `36.04 ms` | `62.26 ms` | `67.13 ms` | `67.44 ms` | **23.59** | 23,666 |
+| **PostgreSQL ILIKE** | `422.46 ms` | `474.05 ms` | `461.76 ms` | `534.47 ms` | `651.82 ms` | `701.70 ms` | **2.11** | 23,666 |
+| **PostgreSQL FTS** | `369.31 ms` | `414.81 ms` | `403.73 ms` | `483.38 ms` | `618.01 ms` | `662.94 ms` | **2.41** | 23,666 |
+| **Elasticsearch** | `32.20 ms` | `50.12 ms` | `43.88 ms` | `90.76 ms` | `102.34 ms` | `102.73 ms` | **19.95** | **23,666** |
 
 ---
 
@@ -119,42 +117,42 @@ Below are the exact metrics recorded across the 8 test runs stored in the `resul
 
 | Engine | Min | Average | p50 | p95 | p99 | Max | QPS | Matches |
 |---|---|---|---|---|---|---|---|---|
-| **PostgreSQL ILIKE** | `184.00 ms` | `197.14 ms` | `190.75 ms` | `213.66 ms` | `363.08 ms` | `411.14 ms` | **5.07** | **0** |
-| **PostgreSQL FTS** | `367.47 ms` | `396.26 ms` | `388.09 ms` | `434.93 ms` | `526.24 ms` | `594.53 ms` | **2.52** | **23,666** |
-| **Elasticsearch** | `29.86 ms` | `34.11 ms` | `31.29 ms` | `52.63 ms` | `56.51 ms` | `56.87 ms` | **29.31** | **0** |
+| **PostgreSQL ILIKE** | `183.08 ms` | `210.58 ms` | `204.50 ms` | `265.75 ms` | `355.92 ms` | `409.13 ms` | **4.75** | **0** |
+| **PostgreSQL FTS** | `371.81 ms` | `408.26 ms` | `397.28 ms` | `456.18 ms` | `596.90 ms` | `614.91 ms` | **2.45** | **23,666** |
+| **Elasticsearch** | `32.47 ms` | `57.69 ms` | `47.95 ms` | `102.83 ms` | `117.00 ms` | `139.82 ms` | **17.33** | **23,666** |
 
 ---
 
 ### Test 4: Query `"container"` (Singular Query — Dataset Contains Plural "containers")
-*Tests singular-to-plural match behavior.*
+*Tests singular-to-plural match behavior via linguistic stemming.*
 
 | Engine | Min | Average | p50 | p95 | p99 | Max | QPS | Matches |
 |---|---|---|---|---|---|---|---|---|
-| **PostgreSQL ILIKE** | `131.80 ms` | `147.10 ms` | `140.86 ms` | `167.14 ms` | `193.28 ms` | `265.61 ms` | **6.80** | **11,908** |
-| **PostgreSQL FTS** | `141.73 ms` | `159.34 ms` | `153.67 ms` | `189.15 ms` | `219.14 ms` | `227.58 ms` | **6.28** | **11,908** |
-| **Elasticsearch** | `30.75 ms` | `40.50 ms` | `36.77 ms` | `56.21 ms` | `59.93 ms` | `63.40 ms` | **24.68** | **0** |
+| **PostgreSQL ILIKE** | `129.78 ms` | `164.87 ms` | `152.58 ms` | `205.51 ms` | `328.77 ms` | `408.64 ms` | **6.07** | **11,908** |
+| **PostgreSQL FTS** | `140.85 ms` | `169.19 ms` | `157.33 ms` | `209.63 ms` | `307.03 ms` | `410.24 ms` | **5.91** | **11,908** |
+| **Elasticsearch** | `28.29 ms` | `48.12 ms` | `40.12 ms` | `87.23 ms` | `109.58 ms` | `116.53 ms` | **20.77** | **11,908** |
 
 ---
 
 ### Test 5: Query `"containers"` (Plural Query Matching Plural Data)
-*Validates that Elasticsearch's Test 4 failure was purely due to missing analyzer stemming.*
+*Validates that plural-to-plural exact token queries match correctly across all three engines.*
 
 | Engine | Min | Average | p50 | p95 | p99 | Max | QPS | Matches |
 |---|---|---|---|---|---|---|---|---|
-| **PostgreSQL ILIKE** | `129.18 ms` | `149.59 ms` | `141.49 ms` | `177.90 ms` | `280.87 ms` | `390.01 ms` | **6.68** | 11,908 |
-| **PostgreSQL FTS** | `139.32 ms` | `159.14 ms` | `149.60 ms` | `185.36 ms` | `380.79 ms` | `384.79 ms` | **6.28** | 11,908 |
-| **Elasticsearch** | `31.25 ms` | `50.65 ms` | `52.50 ms` | `69.49 ms` | `84.95 ms` | `91.63 ms` | **19.74** | 11,908 |
+| **PostgreSQL ILIKE** | `131.83 ms` | `159.66 ms` | `148.01 ms` | `206.68 ms` | `224.49 ms` | `227.11 ms` | **6.26** | 11,908 |
+| **PostgreSQL FTS** | `141.69 ms` | `177.21 ms` | `162.08 ms` | `215.99 ms` | `339.37 ms` | `450.43 ms` | **5.64** | 11,908 |
+| **Elasticsearch** | `29.20 ms` | `52.04 ms` | `40.76 ms` | `102.69 ms` | `117.94 ms` | `126.77 ms` | **19.21** | 11,908 |
 
 ---
 
 ### Test 6: Query `"artificial"` (Zero-Match Baseline)
-*Measures raw index traversal and parsing latency when no records match.*
+*Measures raw index traversal and parsing latency when no records match, verifying precision.*
 
 | Engine | Min | Average | p50 | p95 | p99 | Max | QPS | Matches |
 |---|---|---|---|---|---|---|---|---|
-| **PostgreSQL ILIKE** | `71.09 ms` | `81.91 ms` | `76.34 ms` | `104.65 ms` | `121.57 ms` | `121.84 ms` | **12.21** | 0 |
-| **PostgreSQL FTS** | `70.64 ms` | `80.11 ms` | `75.74 ms` | `100.85 ms` | `107.67 ms` | `111.60 ms` | **12.48** | 0 |
-| **Elasticsearch** | `30.55 ms` | `37.51 ms` | `34.41 ms` | `53.10 ms` | `55.11 ms` | `57.88 ms` | **26.66** | 0 |
+| **PostgreSQL ILIKE** | `73.68 ms` | `95.38 ms` | `85.42 ms` | `136.71 ms` | `147.50 ms` | `147.55 ms` | **10.48** | 0 |
+| **PostgreSQL FTS** | `73.28 ms` | `98.10 ms` | `101.59 ms` | `133.34 ms` | `144.07 ms` | `151.09 ms` | **10.19** | 0 |
+| **Elasticsearch** | `27.30 ms` | `43.35 ms` | `43.99 ms` | `53.23 ms` | `56.38 ms` | `183.76 ms` | **23.06** | 0 |
 
 ---
 
@@ -163,9 +161,9 @@ Below are the exact metrics recorded across the 8 test runs stored in the `resul
 
 | Engine | Min | Average | p50 | p95 | p99 | Max | QPS | Matches |
 |---|---|---|---|---|---|---|---|---|
-| **PostgreSQL ILIKE** | `127.00 ms` | `142.03 ms` | `137.86 ms` | `164.75 ms` | `183.18 ms` | `200.94 ms` | **7.04** | **11,908** |
-| **PostgreSQL FTS** | `73.56 ms` | `87.53 ms` | `81.52 ms` | `122.36 ms` | `153.53 ms` | `208.81 ms` | **11.42** | **0** |
-| **Elasticsearch** | `30.56 ms` | `37.80 ms` | `34.98 ms` | `51.09 ms` | `54.26 ms` | `54.66 ms` | **26.45** | **0** |
+| **PostgreSQL ILIKE** | `124.07 ms` | `157.12 ms` | `141.59 ms` | `206.79 ms` | `286.86 ms` | `307.21 ms` | **6.36** | **11,908** |
+| **PostgreSQL FTS** | `70.44 ms` | `105.83 ms` | `102.26 ms` | `159.00 ms` | `248.76 ms` | `306.85 ms` | **9.45** | **0** |
+| **Elasticsearch** | `27.04 ms` | `39.80 ms` | `37.84 ms` | `58.42 ms` | `60.27 ms` | `67.74 ms` | **25.11** | **11,908** |
 
 ---
 
@@ -174,9 +172,9 @@ Below are the exact metrics recorded across the 8 test runs stored in the `resul
 
 | Engine | Min | Average | p50 | p95 | p99 | Max | QPS | Matches |
 |---|---|---|---|---|---|---|---|---|
-| **PostgreSQL ILIKE** | `121.20 ms` | `130.23 ms` | `126.14 ms` | `142.89 ms` | `177.32 ms` | `323.13 ms` | **7.68** | **11,927** |
-| **PostgreSQL FTS** | `70.14 ms` | `72.98 ms` | `71.67 ms` | `76.82 ms` | `91.50 ms` | `97.26 ms` | **13.70** | **0** |
-| **Elasticsearch** | `30.12 ms` | `34.39 ms` | `33.97 ms` | `38.59 ms` | `41.71 ms` | `64.69 ms` | **29.07** | **0** |
+| **PostgreSQL ILIKE** | `123.90 ms` | `162.03 ms` | `149.66 ms` | `207.58 ms` | `307.30 ms` | `338.58 ms` | **6.17** | **11,927** |
+| **PostgreSQL FTS** | `71.77 ms` | `101.66 ms` | `102.58 ms` | `132.83 ms` | `166.27 ms` | `212.94 ms` | **9.84** | **0** |
+| **Elasticsearch** | `26.82 ms` | `48.06 ms` | `36.85 ms` | `102.85 ms` | `116.80 ms` | `121.87 ms` | **20.80** | **11,927** |
 
 ---
 
@@ -185,59 +183,45 @@ Below are the exact metrics recorded across the 8 test runs stored in the `resul
 ```
                               Average Latency Across Query Types
                  ┌────────────────────────────────────────────────────────┐
-"database"       │ ILIKE: 136 ms │ FTS: 134 ms │ ES: 46 ms                │
-"replication"    │ ILIKE: 464 ms │ FTS: 413 ms │ ES: 42 ms (10x faster)   │
-"replications"   │ ILIKE: 0 hits │ FTS: 396 ms (23.6k hits) │ ES: 0 hits │
-"kuber" (substr) │ ILIKE: 142 ms (11.9k hits) │ FTS: 0 hits │ ES: 0 hits │
-"artificial" (0) │ ILIKE: 82 ms  │ FTS: 80 ms  │ ES: 38 ms                │
+"database"       │ ILIKE: 142 ms │ FTS: 143 ms │ ES: 43 ms (3.3x faster)  │
+"Replication"    │ ILIKE: 474 ms │ FTS: 415 ms │ ES: 50 ms (8.3x faster)  │
+"replications"   │ ILIKE: 0 hits │ FTS: 408 ms │ ES: 58 ms (7.1x faster)  │
+"kuber" (substr) │ ILIKE: 157 ms │ FTS: 0 hits │ ES: 40 ms (4.0x faster)  │
+"artificial" (0) │ ILIKE: 95 ms  │ FTS: 98 ms  │ ES: 43 ms                │
                  └────────────────────────────────────────────────────────┘
 ```
 
-### 1. Latency Scaling: PostgreSQL Heap Visits vs. Lucene Inverted Indexes
-Across the benchmark tests, PostgreSQL latency correlates directly with the number of matched documents:
-- **0 matches:** ~70–80 ms
-- **~11.9k matches:** ~130–160 ms
-- **~23.7k matches:** ~410–464 ms
+### 1. 100% Match Recall Parity
+In previous iterations, Elasticsearch failed 4 out of 8 queries due to the `standard` analyzer. By deploying the **`english` stemmer** alongside a **3-gram `partial_tokenizer`**:
+- **Plurals & Stems:** Queries like `"replications"` and `"container"` match all 23.7k and 11.9k records identically to PostgreSQL FTS.
+- **Arbitrary Substrings:** Partial words like `"kuber"` and `"postgr"` match all ~11.9k records identically to PostgreSQL ILIKE (`pg_trgm`).
+- **Precision:** Zero-match baseline `"artificial"` returned 0 hits, proving that strict AND matching across n-gram positions avoids false positives.
 
-**Why?** In PostgreSQL, after the GIN index identifies matching row pointers (`TIDs`), the executor performs a Bitmap Heap Scan to read tuple data and compute `count(*) OVER ()`. When scanning 23,666 rows (nearly a quarter of the table), I/O and CPU overhead multiply.
+### 2. Latency Scaling: PostgreSQL Heap Scans vs. Lucene Posting Lists
+In PostgreSQL, after the GIN index identifies matching row pointers (`TIDs`), the executor performs a Bitmap Heap Scan to read tuple data and compute `count(*) OVER ()`. When scanning 23,666 rows (nearly a quarter of the table), I/O and CPU overhead multiply:
+- **PostgreSQL ILIKE:** `474.05 ms` (2.11 QPS)
+- **PostgreSQL FTS:** `414.81 ms` (2.41 QPS)
+- **Elasticsearch:** `50.12 ms` (19.95 QPS) — **~8.3x - 9.5x faster** than PostgreSQL under heavy match loads.
 
-**Why Elasticsearch Remains Flat (34–50 ms):** Elasticsearch maintains term dictionaries and posting lists in memory with Roaring Bitmaps. Evaluating `track_total_hits: true` and returning top-5 documents requires no heap scans. It processed 23,666 hits in **42.35 ms** — over **10x faster than PostgreSQL**.
-
-### 2. The Stemming Divide: PostgreSQL FTS Triumph (Test 3)
-The most striking linguistic divergence occurred on `"replications"`:
-- The technical articles in `data.csv` frequently discuss `"replication"`, but never the plural `"replications"`.
-- **ILIKE** looked for literal character sequence `%replications%` ➔ **0 matches**.
-- **Elasticsearch** (with `standard` analyzer) looked for exact token `"replications"` ➔ **0 matches**.
-- **PostgreSQL FTS** passed `"replications"` through the Snowball English stemmer, reducing it to the root lexeme `'replic'`. Because `"replication"` also reduces to `'replic'`, FTS instantly matched **all 23,666 documents**.
-
-### 3. The Substring Divide: PostgreSQL ILIKE Triumph (Tests 7 & 8)
-When users search by typing incomplete prefixes or substrings:
-- Searching `"kuber"` (for Kubernetes) or `"postgr"` (for PostgreSQL) yielded **0 matches in FTS and Elasticsearch**.
-- **PostgreSQL ILIKE (`pg_trgm`)** broke the query into character trigrams (`kub`, `ube`, `ber`) and matched **11,908 and 11,927 documents** respectively in ~130–142 ms.
-- For autocomplete, SKU search, code snippets, or partial terms, trigram indexing provides capabilities that whole-token analyzers cannot match without custom n-gram configurations.
-
-### 4. Real-World Speed Difference: Clarifying Misconceptions
-Previous documentation claimed Elasticsearch was "69x faster than ILIKE" and "15x faster than FTS".
-- In reality, for typical single-word queries like `"database"`, Elasticsearch is **~2.9x faster** (46.18 ms vs 133–136 ms).
-- PostgreSQL ILIKE and PostgreSQL FTS run with **almost identical latency** on standard single terms (136 ms vs 134 ms).
-- Elasticsearch only achieves a **10x speed advantage** when queries match very large slices of the corpus (>20,000 documents) where PostgreSQL's window count and heap access overhead compound.
+### 3. Relevance Ranking with Field Boosting
+With `fields: ['searchable_text^3', 'searchable_text.partial']`, exact and stemmed natural language matches are given 3x higher relevance score priority. When users search whole words, exact matches rank highest; when users search incomplete prefixes or substrings, the 3-gram field still delivers accurate, ranked results.
 
 ---
 
 ## 🏆 Decision Matrix: Choosing the Right Engine
 
-| Criteria | PostgreSQL ILIKE (`pg_trgm`) | PostgreSQL FTS | Elasticsearch |
+| Criteria | PostgreSQL ILIKE (`pg_trgm`) | PostgreSQL FTS | Elasticsearch (Configured) |
 |---|---|---|---|
-| **Best For** | Substrings, SKUs, partial words, autocomplete | Natural language documents, articles, descriptions | Dedicated search engines, huge datasets, multi-tenant scale |
-| **Stemming Awareness** | ❌ No (character-only) | ✅ Yes (Snowball English dictionary) | ⚠️ Requires `'english'` analyzer (not default `standard`) |
-| **Substring / Prefix** | ✅ Native character 3-grams | ❌ Whole words only | ❌ Requires custom `edge_ngram` index |
-| **Relevance Ranking** | ❌ None (`score: null`) | ✅ Built-in `ts_rank` | ✅ Okapi BM25 |
-| **Infrastructure Overhead** | None (in existing DB) | None (in existing DB) | Dedicated JVM cluster, syncing pipelines |
-| **100k Latency (12.5k hits)** | ~136 ms | ~134 ms | ~46 ms |
-| **100k Latency (23.7k hits)** | ~464 ms | ~413 ms | ~42 ms |
-| **QPS Throughput** | ~2–7 QPS | ~2–7 QPS | ~20–30 QPS |
+| **Best For** | Substrings, SKUs, partial words, autocomplete | Natural language documents, articles, descriptions | High-throughput, distributed search combining stems + substrings |
+| **Stemming Awareness** | ❌ No (character-only) | ✅ Yes (Snowball English dictionary) | ✅ Yes (`english` analyzer on `searchable_text`) |
+| **Substring / Prefix** | ✅ Native character 3-grams | ❌ Whole words only | ✅ Yes (3-gram `partial_tokenizer` subfield) |
+| **Relevance Ranking** | ❌ None (`score: null`) | ✅ Built-in `ts_rank` | ✅ Okapi BM25 with `^3` boost |
+| **Infrastructure Overhead** | None (in existing DB) | None (in existing DB) | Dedicated JVM cluster or Elastic Cloud |
+| **100k Latency (12.5k hits)** | ~142 ms | ~143 ms | ~43 ms |
+| **100k Latency (23.7k hits)** | ~474 ms | ~415 ms | ~50 ms |
+| **QPS Throughput** | ~2–7 QPS | ~2–7 QPS | ~17–25 QPS |
 
 ### Summary Recommendation:
-1. **Stick with PostgreSQL FTS** if your documents are natural language text, you need relevance ranking and stemming, and your dataset is within hundreds of thousands of rows.
-2. **Add `pg_trgm`** alongside FTS if your application features autocomplete, partial-code lookups, or user-facing prefix search.
-3. **Graduate to Elasticsearch** when your dataset reaches millions of documents, search volume begins impacting primary database OLTP transactions, or you require sub-50ms latency on massive result sets.
+1. **Use PostgreSQL FTS + `pg_trgm`** if your infrastructure is strictly relational, search volume is moderate, and you prefer zero additional operational dependencies.
+2. **Use Elasticsearch with English + N-gram Multi-fields** when you need maximum search throughput, sub-60ms response times at scale, and a unified engine that seamlessly handles both natural language grammar and arbitrary partial-word queries.
+

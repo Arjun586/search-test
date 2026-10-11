@@ -88,14 +88,14 @@ Evaluated over 100,000 documents across 100 sequential benchmark iterations:
 
 | Scenario / Query | Type | Avg Latency | p50 | p95 | p99 | QPS | Matches |
 |---|---|---|---|---|---|---|---|
-| **`database`** (Test 1) | Common word | `133.80 ms` | `127.83 ms` | `151.60 ms` | `155.84 ms` | **7.47** | 12,511 |
-| **`replication`** (Test 2) | High-frequency (~24% corpus) | `412.87 ms` | `404.91 ms` | `466.14 ms` | `609.95 ms` | **2.42** | 23,666 |
-| **`replications`** (Test 3) | Plural variant (stemmed) | `396.26 ms` | `388.09 ms` | `434.93 ms` | `526.24 ms` | **2.52** | **23,666** |
-| **`container`** (Test 4) | Singular query (stemmed) | `159.34 ms` | `153.67 ms` | `189.15 ms` | `219.14 ms` | **6.28** | **11,908** |
-| **`containers`** (Test 5) | Plural query (stemmed) | `159.14 ms` | `149.60 ms` | `185.36 ms` | `380.79 ms` | **6.28** | **11,908** |
-| **`artificial`** (Test 6) | Zero-match baseline | `80.11 ms` | `75.74 ms` | `100.85 ms` | `107.67 ms` | **12.48** | 0 |
-| **`kuber`** (Test 7) | Prefix / Substring (unstemmed) | `87.53 ms` | `81.52 ms` | `122.36 ms` | `153.53 ms` | **11.42** | **0** |
-| **`postgr`** (Test 8) | Prefix / Substring (unstemmed) | `72.98 ms` | `71.67 ms` | `76.82 ms` | `91.50 ms` | **13.70** | **0** |
+| **`database`** (Test 1) | Common word | `142.57 ms` | `135.76 ms` | `196.03 ms` | `208.05 ms` | **7.01** | 12,511 |
+| **`Replication`** (Test 2) | High-frequency (~24% corpus) | `414.81 ms` | `403.73 ms` | `483.38 ms` | `618.01 ms` | **2.41** | 23,666 |
+| **`replications`** (Test 3) | Plural variant (stemmed) | `408.26 ms` | `397.28 ms` | `456.18 ms` | `596.90 ms` | **2.45** | **23,666** |
+| **`container`** (Test 4) | Singular query (stemmed) | `169.19 ms` | `157.33 ms` | `209.63 ms` | `307.03 ms` | **5.91** | **11,908** |
+| **`containers`** (Test 5) | Plural query (stemmed) | `177.21 ms` | `162.08 ms` | `215.99 ms` | `339.37 ms` | **5.64** | **11,908** |
+| **`artificial`** (Test 6) | Zero-match baseline | `98.10 ms` | `101.59 ms` | `133.34 ms` | `144.07 ms` | **10.19** | 0 |
+| **`kuber`** (Test 7) | Prefix / Substring (unstemmed) | `105.83 ms` | `102.26 ms` | `159.00 ms` | `248.76 ms` | **9.45** | **0** |
+| **`postgr`** (Test 8) | Prefix / Substring (unstemmed) | `101.66 ms` | `102.58 ms` | `132.83 ms` | `166.27 ms` | **9.84** | **0** |
 
 ---
 
@@ -103,8 +103,8 @@ Evaluated over 100,000 documents across 100 sequential benchmark iterations:
 
 ### 1. The Linguistic Stemming Triumph (Tests 3 & 4)
 The benchmark demonstrated the immense power of morphological stemming:
-- When searching for `"replications"`, the dataset only contained the singular word `"replication"`. Both ILIKE (no stemming) and Elasticsearch (`standard` analyzer) returned **0 matches**. PostgreSQL FTS reduced `"replications"` to `'replic'` and successfully found all **23,666 documents**!
-- Similarly, searching `"container"` matched all **11,908 documents** whose tags were `"containers"`, whereas Elasticsearch returned **0 matches**.
+- When searching for `"replications"`, the dataset only contained the singular word `"replication"`. While character engines like ILIKE (no stemming) returned **0 matches**, linguistic stemmers (PostgreSQL FTS and Elasticsearch with the English analyzer) reduced `"replications"` to `'replic'` and successfully found all **23,666 documents**!
+- Similarly, searching `"container"` matched all **11,908 documents** whose tags were `"containers"`.
 
 ### 2. Relevance Scoring (`ts_rank`)
 Unlike ILIKE, which returns results in arbitrary table heap order, FTS scores each row. For `"database"`, top documents were returned with scores such as `0.091`, ensuring the most relevant articles appear first.

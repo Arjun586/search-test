@@ -73,26 +73,27 @@ Evaluated over 100,000 documents across 100 sequential benchmark iterations:
 
 | Scenario / Query | Type | Avg Latency | p50 | p95 | p99 | QPS | Matches |
 |---|---|---|---|---|---|---|---|
-| **`database`** (Test 1) | Common word | `136.12 ms` | `129.89 ms` | `164.45 ms` | `198.31 ms` | **7.34** | 12,511 |
-| **`replication`** (Test 2) | High-frequency (~24% corpus) | `464.17 ms` | `454.97 ms` | `512.77 ms` | `542.43 ms` | **2.15** | 23,666 |
-| **`replications`** (Test 3) | Plural variant (no stemming) | `197.14 ms` | `190.75 ms` | `213.66 ms` | `363.08 ms` | **5.07** | **0** |
-| **`container`** (Test 4) | Substring of plural "containers" | `147.10 ms` | `140.86 ms` | `167.14 ms` | `193.28 ms` | **6.80** | **11,908** |
-| **`artificial`** (Test 6) | Zero-match baseline | `81.91 ms` | `76.34 ms` | `104.65 ms` | `121.57 ms` | **12.21** | 0 |
-| **`kuber`** (Test 7) | Prefix of "Kubernetes" | `142.03 ms` | `137.86 ms` | `164.75 ms` | `183.18 ms` | **7.04** | **11,908** |
-| **`postgr`** (Test 8) | Prefix of "PostgreSQL" | `130.23 ms` | `126.14 ms` | `142.89 ms` | `177.32 ms` | **7.68** | **11,927** |
+| **`database`** (Test 1) | Common word | `141.84 ms` | `132.77 ms` | `174.11 ms` | `204.91 ms` | **7.05** | 12,511 |
+| **`Replication`** (Test 2) | High-frequency (~24% corpus) | `474.05 ms` | `461.76 ms` | `534.47 ms` | `651.82 ms` | **2.11** | 23,666 |
+| **`replications`** (Test 3) | Plural variant (no stemming) | `210.58 ms` | `204.50 ms` | `265.75 ms` | `355.92 ms` | **4.75** | **0** |
+| **`container`** (Test 4) | Substring of plural "containers" | `164.87 ms` | `152.58 ms` | `205.51 ms` | `328.77 ms` | **6.07** | **11,908** |
+| **`containers`** (Test 5) | Plural query (exact token) | `159.66 ms` | `148.01 ms` | `206.68 ms` | `224.49 ms` | **6.26** | **11,908** |
+| **`artificial`** (Test 6) | Zero-match baseline | `95.38 ms` | `85.42 ms` | `136.71 ms` | `147.50 ms` | **10.48** | 0 |
+| **`kuber`** (Test 7) | Prefix of "Kubernetes" | `157.12 ms` | `141.59 ms` | `206.79 ms` | `286.86 ms` | **6.36** | **11,908** |
+| **`postgr`** (Test 8) | Prefix of "PostgreSQL" | `162.03 ms` | `149.66 ms` | `207.58 ms` | `307.30 ms` | **6.17** | **11,927** |
 
 ---
 
 ## 🔍 Key Behavioral Insights
 
 ### 1. The Substring Superpower (Tests 7 & 8)
-Trigrams do not care about word boundaries, dictionary lexemes, or whitespace. Searching `"kuber"` or `"postgr"` matched ~11,900 documents in ~130–142 ms because the trigrams (`kub`, `ube`, `ber`) existed within `"Kubernetes"` and `"PostgreSQL"`. Both PostgreSQL Full-Text Search and Elasticsearch failed completely on these queries (**0 matches**).
+Trigrams do not care about word boundaries, dictionary lexemes, or whitespace. Searching `"kuber"` or `"postgr"` matched ~11,900 documents in ~157–162 ms because the trigrams (`kub`, `ube`, `ber`) existed within `"Kubernetes"` and `"PostgreSQL"`. In comparison, whole-word dictionary engines like PostgreSQL Full-Text Search return **0 matches** on these queries.
 
 ### 2. Performance Parity on Common Words (Test 1)
-Previous documentation claimed ILIKE took ~558 ms on `"database"`. In actual benchmark testing, **ILIKE averaged 136.12 ms**, matching PostgreSQL FTS (133.80 ms) almost identically.
+In actual benchmark testing, **ILIKE averaged 141.84 ms**, matching PostgreSQL FTS (142.57 ms) almost identically.
 
 ### 3. Degradation Under Extreme Match Volume (Test 2)
-When a term matches nearly a quarter of the entire corpus (`"replication"`: 23,666 of 100,000 rows), PostgreSQL must merge massive trigram posting lists and compute `count(*) OVER ()` across 23,666 rows. Average latency jumped to **464.17 ms** (QPS dropped to 2.15).
+When a term matches nearly a quarter of the entire corpus (`"Replication"`: 23,666 of 100,000 rows), PostgreSQL must merge massive trigram posting lists and compute `count(*) OVER ()` across 23,666 rows. Average latency jumped to **474.05 ms** (QPS dropped to 2.11).
 
 ### 4. No Stemming or Grammar Awareness (Test 3)
 ILIKE is strictly character-based. Searching `"replications"` returned **0 matches** because the documents contained only the singular `"replication"`. Because `"replications"` is longer than `"replication"`, it cannot match as a substring.

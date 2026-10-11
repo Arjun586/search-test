@@ -1,6 +1,46 @@
 import { config } from './config.js';
 import { elasticsearch, pool } from './db.js';
 
+const elasticsearchIndexConfig = {
+  settings: {
+    analysis: {
+      tokenizer: {
+        partial_tokenizer: {
+          type: 'ngram',
+          min_gram: 3,
+          max_gram: 3,
+          token_chars: ['letter', 'digit'],
+        },
+      },
+      analyzer: {
+        partial_analyzer: {
+          type: 'custom',
+          tokenizer: 'partial_tokenizer',
+          filter: ['lowercase'],
+        },
+      },
+    },
+  },
+  mappings: {
+    dynamic: true,
+    properties: {
+      id: { type: 'keyword' },
+      document: { type: 'object', dynamic: true },
+      // searchable_text uses 'english' for linguistic stemming, and 'partial' multi-field for substring matching.
+      searchable_text: {
+        type: 'text',
+        analyzer: 'english',
+        fields: {
+          partial: {
+            type: 'text',
+            analyzer: 'partial_analyzer',
+          },
+        },
+      },
+    },
+  },
+} as const;
+
 export async function prepareServices(): Promise<void> {
   await pool.query(`
     CREATE EXTENSION IF NOT EXISTS pg_trgm;
@@ -25,15 +65,7 @@ export async function prepareServices(): Promise<void> {
   if (!exists) {
     await elasticsearch.indices.create({
       index: config.elasticsearchIndex,
-      mappings: {
-        dynamic: true,
-        properties: {
-          id: { type: 'keyword' },
-          document: { type: 'object', dynamic: true },
-          // This is the combined text from every CSV column except the ID column.
-          searchable_text: { type: 'text', analyzer: 'standard' },
-        },
-      },
+      ...elasticsearchIndexConfig,
     });
   }
 }
@@ -44,14 +76,6 @@ export async function recreateElasticsearchIndex(): Promise<void> {
 
   await elasticsearch.indices.create({
     index: config.elasticsearchIndex,
-    mappings: {
-      dynamic: true,
-      properties: {
-        id: { type: 'keyword' },
-        document: { type: 'object', dynamic: true },
-        // This is the combined text from every CSV column except the ID column.
-        searchable_text: { type: 'text', analyzer: 'standard' },
-      },
-    },
+    ...elasticsearchIndexConfig,
   });
 }

@@ -12,29 +12,28 @@ All benchmark numbers below are taken directly from actual, truthful benchmark r
 
 | Strategy | Engine | Min | Avg | p50 | p95 | p99 | Max | QPS | Matches |
 |---|---|---|---|---|---|---|---|---|---|
-| [**ILIKE (`pg_trgm`)**](docs/01-ilike-trigram.md) | PostgreSQL 16 | `124.89 ms` | `136.12 ms` | `129.89 ms` | `164.45 ms` | `198.31 ms` | `290.73 ms` | **7.34** | 12,511 |
-| [**Full-Text Search (FTS)**](docs/02-postgres-fts.md) | PostgreSQL 16 | `121.38 ms` | `133.80 ms` | `127.83 ms` | `151.60 ms` | `155.84 ms` | `205.74 ms` | **7.47** | 12,511 |
-| [**Elasticsearch**](docs/03-elasticsearch.md) | Elasticsearch 8.19.0 | `31.67 ms` | `46.18 ms` | `43.44 ms` | `79.35 ms` | `90.63 ms` | `97.29 ms` | **21.64** | 11,912* |
+| [**ILIKE (`pg_trgm`)**](docs/01-ilike-trigram.md) | PostgreSQL 16 | `125.33 ms` | `141.84 ms` | `132.77 ms` | `174.11 ms` | `204.91 ms` | `345.42 ms` | **7.05** | 12,511 |
+| [**Full-Text Search (FTS)**](docs/02-postgres-fts.md) | PostgreSQL 16 | `123.06 ms` | `142.57 ms` | `135.76 ms` | `196.03 ms` | `208.05 ms` | `212.47 ms` | **7.01** | 12,511 |
+| [**Elasticsearch**](docs/03-elasticsearch.md) | Elasticsearch 8.19.0 | `30.41 ms` | `42.97 ms` | `42.57 ms` | `59.88 ms` | `82.24 ms` | `84.30 ms` | **23.25** | **12,511** |
 
-*\*Why 11,912 vs 12,511 matches? Elasticsearch was configured with the `standard` analyzer, which does not stem words. It missed 599 documents where "Databases" appears only in plural form in the category/tags, whereas PostgreSQL's English stemmer and ILIKE substring matching captured both singular and plural forms.*
-
+*Elasticsearch achieves 100% match parity with PostgreSQL via the `'english'` analyzer, matching both singular and plural document tags while completing queries **~3.3x faster** than PostgreSQL.*
 
 ---
 
 ## 📊 Comprehensive 8-Query Benchmark Suite (Actual Test Results)
 
-Evaluating a single query does not reveal the true trade-offs between character trigrams, natural language lexemes, and Lucene inverted indexes. Below is the complete matrix from 8 distinct benchmark scenarios tested in the lab (`result/test 1.png` through `result/test 8.png`):
+Evaluating a single query does not reveal the true trade-offs between character trigrams, natural language lexemes, and Lucene inverted indexes. Below is the complete matrix from 8 distinct benchmark scenarios tested in the lab (`result/database.png`, `result/Replication.png`, `result/replications.png`, `result/container.png`, `result/containers.png`, `result/artificial.png`, `result/kuber.png`, `result/postgr.png`):
 
 | Test | Query | Type / Scenario Tested | ILIKE Avg (QPS) | FTS Avg (QPS) | Elasticsearch Avg (QPS) | Matches (ILIKE / FTS / ES) | Key Finding |
 |---|---|---|---|---|---|---|---|
-| **Test 1** | `database` | Common word (12.5% corpus) | 136.12 ms (7.34) | 133.80 ms (7.47) | 46.18 ms (21.64) | 12,511 / 12,511 / 11,912 | ILIKE & FTS perform equally; ES misses 599 plural-only documents. |
-| **Test 2** | `replication` | High-frequency term (23.7% corpus) | 464.17 ms (2.15) | 412.87 ms (2.42) | 42.35 ms (23.59) | 23,666 / 23,666 / 23,666 | At 23.7k matches, PostgreSQL GIN list merging slows both engines down; ES is **10x faster**. |
-| **Test 3** | `replications` | Plural search (singular in corpus) | 197.14 ms (5.07) | 396.26 ms (2.52) | 34.11 ms (29.31) | 0 / **23,666** / 0 | **FTS Stemming Triumph**: Snowball stemmer reduces to `'replic'`. ILIKE & ES fail completely. |
-| **Test 4** | `container` | Singular search (plural in corpus) | 147.10 ms (6.80) | 159.34 ms (6.28) | 40.50 ms (24.68) | **11,908** / **11,908** / 0 | ILIKE matches substring; FTS stems word. ES `standard` analyzer misses completely. |
-| **Test 5** | `containers` | Plural search matching plural data | 149.59 ms (6.68) | 159.14 ms (6.28) | 50.65 ms (19.74) | 11,908 / 11,908 / 11,908 | When query matches exact token, ES matches all 11,908 docs, confirming Test 4 was a stemming miss. |
-| **Test 6** | `artificial` | Zero-match term (not in corpus) | 81.91 ms (12.21) | 80.11 ms (12.48) | 37.51 ms (26.66) | 0 / 0 / 0 | Baseline index traversal without heap fetches or counting overhead. |
-| **Test 7** | `kuber` | Partial word / prefix of "Kubernetes" | 142.03 ms (7.04) | 87.53 ms (11.42) | 37.80 ms (26.45) | **11,908** / 0 / 0 | **ILIKE Trigram Triumph**: Character n-grams match substrings. FTS and ES fail. |
-| **Test 8** | `postgr` | Partial word / prefix of "PostgreSQL" | 130.23 ms (7.68) | 72.98 ms (13.70) | 34.39 ms (29.07) | **11,927** / 0 / 0 | **ILIKE Trigram Triumph**: Trigram index matches partial token. FTS and ES fail. |
+| **Test 1** | `database` | Common word (12.5% corpus) | 141.84 ms (7.05) | 142.57 ms (7.01) | 42.97 ms (23.25) | 12,511 / 12,511 / 12,511 | 100% parity across all engines; ES is **3.3x faster**. |
+| **Test 2** | `Replication` | High-frequency term (23.7% corpus) | 474.05 ms (2.11) | 414.81 ms (2.41) | 50.12 ms (19.95) | 23,666 / 23,666 / 23,666 | At 23.7k matches, PostgreSQL GIN list merging slows down; ES is **~8.3x - 9.5x faster**. |
+| **Test 3** | `replications` | Plural search (singular in corpus) | 210.58 ms (4.75) | 408.26 ms (2.45) | 57.69 ms (17.33) | 0 / 23,666 / 23,666 | **Stemming Triumph**: FTS & ES both stem `'replic'`. ES is **7.1x faster** than FTS. ILIKE fails (0). |
+| **Test 4** | `container` | Singular search (plural in corpus) | 164.87 ms (6.07) | 169.19 ms (5.91) | 48.12 ms (20.77) | 11,908 / 11,908 / 11,908 | ILIKE matches substring; FTS & ES stem word. ES is **3.5x faster**. |
+| **Test 5** | `containers` | Plural search matching plural data | 159.66 ms (6.26) | 177.21 ms (5.64) | 52.04 ms (19.21) | 11,908 / 11,908 / 11,908 | Exact plural match across all engines; ES is **3.4x faster**. |
+| **Test 6** | `artificial` | Zero-match term (not in corpus) | 95.38 ms (10.48) | 98.10 ms (10.19) | 43.35 ms (23.06) | 0 / 0 / 0 | Clean zero-match baseline across all engines (no false positives). |
+| **Test 7** | `kuber` | Partial word / prefix of "Kubernetes" | 157.12 ms (6.36) | 105.83 ms (9.45) | 39.80 ms (25.11) | 11,908 / 0 / 11,908 | ILIKE & ES 3-gram match partial prefix. FTS fails (0). ES is **4.0x faster** than ILIKE. |
+| **Test 8** | `postgr` | Partial word / prefix of "PostgreSQL" | 162.03 ms (6.17) | 101.66 ms (9.84) | 48.06 ms (20.80) | 11,927 / 0 / 11,927 | ILIKE & ES 3-gram match partial prefix. FTS fails (0). ES is **3.4x faster** than ILIKE. |
 
 > 📖 *For complete percentiles (min, avg, p50, p95, p99, max), query execution plans, and architectural analysis, see [**docs/04-strategy-comparison.md**](docs/04-strategy-comparison.md).*
 
@@ -46,7 +45,7 @@ Evaluating a single query does not reveal the true trade-offs between character 
 |---|---|---|---|---|
 | [**ILIKE (`pg_trgm`)**](docs/01-ilike-trigram.md) | PostgreSQL | GIN index over character 3-grams (`gin_trgm_ops`) | Arbitrary substring and character chunks | Partial words, SKUs, usernames, emails, autocomplete |
 | [**Full-Text Search (FTS)**](docs/02-postgres-fts.md) | PostgreSQL | `tsvector` generated column + English Snowball stemmer + GIN index + `ts_rank` | Linguistic stems & lexemes | Natural language document search inside PostgreSQL |
-| [**Elasticsearch**](docs/03-elasticsearch.md) | Elasticsearch | Lucene Inverted Index (`search_documents`, `standard` analyzer) + BM25 | Exact normalized tokens (whitespace/punctuation) | High-throughput, distributed search and low-latency scale |
+| [**Elasticsearch**](docs/03-elasticsearch.md) | Elasticsearch | Lucene Inverted Index (`english` analyzer + 3-gram `partial_tokenizer`) + BM25 | Stems AND arbitrary character substrings | High-throughput, distributed search with low-latency scale and complete linguistic + partial-word coverage |
 
 ---
 
@@ -66,9 +65,9 @@ Evaluating a single query does not reveal the true trade-offs between character 
  │ - id (TEXT PRIMARY KEY)                │       │ - id (keyword)                 │
  │ - document (JSONB)                     │       │ - document (object)            │
  │ - searchable_text (TEXT)               │       │ - searchable_text (text)       │
- │   └─ GIN Index: gin_trgm_ops           │       │    └─ Analyzer: standard       │
- │ - search_vector (TSVECTOR STORED)      │       └───────────────┬────────────────┘
- │   └─ GIN Index: search_vector_idx      │                       │
+ │   └─ GIN Index: gin_trgm_ops           │       │    ├─ Analyzer: english        │
+ │ - search_vector (TSVECTOR STORED)      │       │    └─ Subfield: partial (ngram)│
+ │   └─ GIN Index: search_vector_idx      │       └───────────────┬────────────────┘
  └───────────────────┬────────────────────┘                       │
                      └──────────────────────┬─────────────────────┘
                                             ▼
